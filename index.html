@@ -1,0 +1,95 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoirPages | Premium eBooks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="navbar">
+    <a class="brand" href="/">◈ Noir<span>Pages</span></a>
+    <nav>
+        <a href="#home">Home</a>
+        <a href="#books">Explore eBooks</a>
+        <a href="#about">About</a>
+    </nav>
+    <a class="nav-button" href="#books">Explore Store ↗</a>
+</header>
+
+<main>
+    <section class="hero" id="home">
+        <div class="hero-content">
+            <span class="eyebrow">YOUR NEXT IDEA STARTS HERE</span>
+            <h1>Knowledge that<br>moves you <span class="gradient">forward.</span></h1>
+            <p>Practical digital books for curious minds. Learn AI, master new skills and turn ideas into action.</p>
+            <a class="button" href="#books">Explore eBooks →</a>
+            <p class="small-note">✦ Digital learning &nbsp; · &nbsp; Instant access after purchase</p>
+        </div>
+
+        <div class="hero-art">
+            <div class="book">
+                <small>NOIRPAGES / 001</small>
+                <div class="symbol">✳</div>
+                <h2>THE<br>FUTURE<br><span>IS YOURS.</span></h2>
+                <small>A GUIDE TO BIGGER IDEAS</small>
+            </div>
+        </div>
+    </section>
+
+    <section class="benefits">
+        <div><b>✦ Practical Knowledge</b><p>Guides for real-world learning.</p></div>
+        <div><b>↗ Digital Convenience</b><p>Access your purchased books online.</p></div>
+        <div><b>◇ Learn at Your Pace</b><p>Read whenever it suits you.</p></div>
+    </section>
+
+    <section class="store" id="books">
+        <div class="section-heading">
+            <div>
+                <span class="eyebrow">THE DIGITAL LIBRARY</span>
+                <h2>Explore our <span class="gradient">eBooks.</span></h2>
+                <p>Small reads. Big possibilities.</p>
+            </div>
+            <span class="muted">{{ books|length }} COLLECTIONS</span>
+        </div>
+
+        <div class="book-grid">
+            {% for book in books %}
+            <article class="book-card">
+                <div class="cover {{ book.cover }}">
+                    <small>NOIRPAGES</small>
+                    <div class="cover-symbol">{{ book.icon }}</div>
+                    <h3>{{ book.title }}</h3>
+                    <small>{{ book.category }}</small>
+                </div>
+                <div class="book-info">
+                    <span class="category">{{ book.category }}</span>
+                    <h3>{{ book.title }}</h3>
+                    <p>{{ book.description }}</p>
+                    <div class="book-footer">
+                        <strong>₹{{ book.price }}</strong>
+                        <a href="#about" class="buy-button">View details ↗</a>
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="about" id="about">
+        <span class="eyebrow">A BETTER WAY TO LEARN</span>
+        <h2>Make your next idea<br>your <span class="gradient">best one.</span></h2>
+        <p>NoirPages brings useful digital learning resources together in one simple, modern store.</p>
+        <a class="button" href="#books">Browse the collection →</a>
+    </section>
+</main>
+
+<footer>
+    <a class="brand" href="/">◈ Noir<span>Pages</span></a>
+    <p>© 2026 NoirPages. Learn something extraordinary.</p>
+</footer>
+
+</body>
+</html>
