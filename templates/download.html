@@ -1,0 +1,52 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Your eBook | NoirPages</title>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            background: #101014;
+            color: #f7f5f0;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        main {
+            width: min(90%, 480px);
+            padding: 36px 24px;
+            border: 1px solid #34343d;
+            border-radius: 18px;
+            box-sizing: border-box;
+        }
+        a {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 14px 22px;
+            border-radius: 8px;
+            background: #e9d5a1;
+            color: #151515;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        p { color: #c2c0ca; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Thank you for your purchase!</h1>
+        <p>Your payment has been verified. Your eBook is ready.</p>
+        <a href="{{ url_for('download_book', token=token) }}">
+            Download your eBook
+        </a>
+        <p>This secure link expires after 24 hours.</p>
+        <p><a href="/" style="background:transparent;color:#e9d5a1">
+            Back to NoirPages
+        </a></p>
+    </main>
+</body>
+</html>
