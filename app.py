@@ -2,7 +2,8 @@
 import os
 import hashlib
 import secrets
-import reimport io
+import re
+import io
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
@@ -447,7 +448,6 @@ def download_page(token):
     return render_template("download.html", token=token)
 
 
-@app.route("/download/<token>")
 def download_from_google_drive(file_id, download_name):
     credentials_path = os.getenv(
         "GOOGLE_APPLICATION_CREDENTIALS",
@@ -481,6 +481,9 @@ def download_from_google_drive(file_id, download_name):
         download_name=download_name,
         mimetype="application/pdf",
     )
+
+
+@app.route("/download/<token>")
 def download_book(token):
     if not token or len(token) > 100:
         abort(404)
@@ -514,7 +517,7 @@ def download_book(token):
     if row is None:
         abort(404)
 
-       title, file_path = row
+    title, file_path = row
 
     if file_path and file_path.startswith("gdrive:"):
         file_id = file_path.split(":", 1)[1].strip()
@@ -525,7 +528,7 @@ def download_book(token):
         try:
             return download_from_google_drive(
                 file_id,
-                "The_AI_Toolkit.pdf",
+                f"{re.sub(r'[^A-Za-z0-9._-]+', '_', title)}.pdf",
             )
         except Exception:
             app.logger.exception("Google Drive download failed")
