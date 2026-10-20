@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NoirPages | Premium eBooks</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
 </head>
 <body>
 
@@ -26,7 +27,7 @@
             <h1>Knowledge that<br>moves you <span class="gradient">forward.</span></h1>
             <p>Practical digital books for curious minds. Learn AI, master new skills and turn ideas into action.</p>
             <a class="button" href="#books">Explore eBooks →</a>
-            <p class="small-note">✦ Digital learning &nbsp; · &nbsp; Instant access after purchase</p>
+            <p class="small-note">✦ Digital learning &nbsp; · &nbsp; Secure checkout &nbsp; · &nbsp; Instant access after verified payment</p>
         </div>
 
         <div class="hero-art">
@@ -41,7 +42,7 @@
 
     <section class="benefits">
         <div><b>✦ Practical Knowledge</b><p>Guides for real-world learning.</p></div>
-        <div><b>↗ Digital Convenience</b><p>Access your purchased books online.</p></div>
+        <div><b>↗ Digital Convenience</b><p>Secure online checkout.</p></div>
         <div><b>◇ Learn at Your Pace</b><p>Read whenever it suits you.</p></div>
     </section>
 
@@ -64,16 +65,25 @@
                     <h3>{{ book.title }}</h3>
                     <small>{{ book.category }}</small>
                 </div>
+
                 <div class="book-info">
                     <span class="category">{{ book.category }}</span>
                     <h3>{{ book.title }}</h3>
                     <p>{{ book.description }}</p>
+
                     <div class="book-footer">
-                        <strong>₹{{ book.price }}</strong>
-                        <a href="#about" class="buy-button">View details ↗</a>
+                        <strong>₹{{ "%.2f"|format(book.price) }}</strong>
+                        <button
+                            type="button"
+                            class="buy-button"
+                            onclick="openCheckout({{ book.id|tojson }}, {{ book.title|tojson }})">
+                            Buy Now ↗
+                        </button>
                     </div>
                 </div>
             </article>
+            {% else %}
+            <p>No eBooks are available right now. Please check back soon.</p>
             {% endfor %}
         </div>
     </section>
@@ -90,6 +100,156 @@
     <a class="brand" href="/">◈ Noir<span>Pages</span></a>
     <p>© 2026 NoirPages. Learn something extraordinary.</p>
 </footer>
+
+<!-- Checkout modal -->
+<div id="checkoutModal"
+     style="display:none; position:fixed; inset:0; z-index:1000;
+     background:rgba(0,0,0,.78); align-items:center; justify-content:center;
+     padding:18px;">
+
+    <div style="background:#17171d; color:#f7f5f0; width:100%; max-width:430px;
+                padding:28px; border:1px solid #393943; border-radius:16px;
+                box-sizing:border-box;">
+
+        <button type="button" onclick="closeCheckout()"
+                aria-label="Close checkout"
+                style="float:right; background:none; border:0; color:white;
+                       font-size:24px; cursor:pointer;">&times;</button>
+
+        <span class="eyebrow">SECURE CHECKOUT</span>
+        <h2 style="margin-top:12px;">Get your eBook</h2>
+        <p id="selectedBook" style="color:#c2c0ca;"></p>
+
+        <form id="checkoutForm">
+            <label for="customerName">Full name</label>
+            <input id="customerName" name="name" type="text"
+                   maxlength="100" autocomplete="name" required
+                   placeholder="Enter your name"
+                   style="display:block; width:100%; box-sizing:border-box;
+                   padding:12px; margin:8px 0 16px; border-radius:8px;
+                   border:1px solid #454550; background:#22222a; color:white;">
+
+            <label for="customerEmail">Email address</label>
+            <input id="customerEmail" name="email" type="email"
+                   maxlength="254" autocomplete="email" required
+                   placeholder="you@example.com"
+                   style="display:block; width:100%; box-sizing:border-box;
+                   padding:12px; margin:8px 0 18px; border-radius:8px;
+                   border:1px solid #454550; background:#22222a; color:white;">
+
+            <button id="payButton" type="submit" class="button"
+                    style="width:100%; border:0; cursor:pointer;">
+                Continue to payment →
+            </button>
+
+            <p id="checkoutMessage" role="status"
+               style="color:#d8d3c7; line-height:1.5;"></p>
+        </form>
+
+        <p style="font-size:12px; color:#a9a6b2;">
+            Payment is processed through Cashfree. Your download is unlocked
+            only after the server verifies your payment.
+        </p>
+    </div>
+</div>
+
+<script>
+    let selectedBookId = null;
+    let checkoutBusy = false;
+
+    const modal = document.getElementById("checkoutModal");
+    const form = document.getElementById("checkoutForm");
+    const payButton = document.getElementById("payButton");
+    const message = document.getElementById("checkoutMessage");
+
+    function openCheckout(bookId, title) {
+        selectedBookId = bookId;
+        document.getElementById("selectedBook").textContent =
+            "Selected eBook: " + title;
+        message.textContent = "";
+        modal.style.display = "flex";
+    }
+
+    function closeCheckout() {
+        if (checkoutBusy) return;
+        modal.style.display = "none";
+    }
+
+    modal.addEventListener("click", function (event) {
+        if (event.target === modal) closeCheckout();
+    });
+
+    document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") closeCheckout();
+    });
+
+    form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+
+        if (checkoutBusy || selectedBookId === null) return;
+
+        const name = document.getElementById("customerName").value.trim();
+        const email = document.getElementById("customerEmail").value.trim();
+
+        if (!name || !email) {
+            message.textContent = "Please enter your name and email.";
+            return;
+        }
+
+        checkoutBusy = true;
+        payButton.disabled = true;
+        payButton.textContent = "Preparing secure checkout...";
+        message.textContent = "Connecting to the payment service...";
+
+        try {
+            const response = await fetch("/api/create-order", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    book_id: selectedBookId,
+                    name: name,
+                    email: email
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || "Could not start checkout.");
+            }
+
+            if (!result.payment_session_id) {
+                throw new Error("Payment session was not returned.");
+            }
+
+            if (typeof Cashfree !== "function") {
+                throw new Error("Checkout could not load. Please refresh and try again.");
+            }
+
+            const cashfree = Cashfree({
+                mode: result.mode === "production" ? "production" : "sandbox"
+            });
+
+            message.textContent = "Opening Cashfree checkout...";
+
+            await cashfree.checkout({
+                paymentSessionId: result.payment_session_id,
+                redirectTarget: "_self"
+            });
+
+            // Cashfree normally redirects to the return URL. If it does not,
+            // don't assume payment succeeded; let the customer retry/check status.
+        } catch (error) {
+            message.textContent =
+                error.message || "Something went wrong. Please try again.";
+            checkoutBusy = false;
+            payButton.disabled = false;
+            payButton.textContent = "Continue to payment →";
+        }
+    });
+</script>
 
 </body>
 </html>
