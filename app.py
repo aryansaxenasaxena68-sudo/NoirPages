@@ -2,7 +2,10 @@
 import os
 import hashlib
 import secrets
-import re
+import reimport io
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+from google.oauth2 import service_account
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from decimal import Decimal
@@ -445,6 +448,39 @@ def download_page(token):
 
 
 @app.route("/download/<token>")
+def download_from_google_drive(file_id, download_name):
+    credentials_path = os.getenv(
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "/etc/secrets/google-drive-credentials.json",
+    )
+
+    credentials = service_account.Credentials.from_service_account_file(
+        credentials_path,
+        scopes=["https://www.googleapis.com/auth/drive.readonly"],
+    )
+
+    drive = build(
+        "drive",
+        "v3",
+        credentials=credentials,
+        cache_discovery=False,
+    )
+
+    request_file = drive.files().get_media(fileId=file_id)
+    buffer = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request_file)
+
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/pdf",
+    )
 def download_book(token):
     if not token or len(token) > 100:
         abort(404)
@@ -478,8 +514,24 @@ def download_book(token):
     if row is None:
         abort(404)
 
-    title, file_path = row
+       title, file_path = row
 
+    if file_path and file_path.startswith("gdrive:"):
+        file_id = file_path.split(":", 1)[1].strip()
+
+        if not file_id:
+            return "The eBook file is not configured.", 503
+
+        try:
+            return download_from_google_drive(
+                file_id,
+                "The_AI_Toolkit.pdf",
+            )
+        except Exception:
+            app.logger.exception("Google Drive download failed")
+            return "Download temporarily unavailable.", 503
+
+    # Keep local-file support for books stored on the server.
     try:
         requested_path = (BASE_DIR / file_path).resolve()
         requested_path.relative_to(PRIVATE_BOOKS_DIR)
@@ -488,9 +540,7 @@ def download_book(token):
         abort(404)
 
     if not requested_path.is_file():
-        app.logger.error(
-            "Book PDF file not found for book: %s", title
-        )
+        app.logger.error("Book PDF file not found for book: %s", title)
         return "The eBook file is not currently available.", 503
 
     return send_file(
@@ -500,7 +550,6 @@ def download_book(token):
         mimetype="application/pdf",
         conditional=True,
     )
-
 
 if __name__ == "__main__":
     app.run(debug=False)
