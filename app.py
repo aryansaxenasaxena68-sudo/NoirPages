@@ -11,8 +11,14 @@ import psycopg
 import requests
 from dotenv import load_dotenv
 from flask import (
-    Flask, render_template, abort, send_file,
-    request, jsonify, redirect, url_for
+    Flask,
+    render_template,
+    abort,
+    send_file,
+    request,
+    jsonify,
+    redirect,
+    url_for,
 )
 
 load_dotenv()
@@ -33,6 +39,7 @@ def get_database_url():
 
 def cashfree_config():
     mode = os.getenv("CASHFREE_ENV", "sandbox").strip().lower()
+
     if mode not in ("sandbox", "production"):
         raise RuntimeError("CASHFREE_ENV must be sandbox or production")
 
@@ -42,13 +49,13 @@ def cashfree_config():
     if not app_id or not secret:
         raise RuntimeError("Cashfree credentials are not configured")
 
-    # Avoid accidentally using live credentials during sandbox testing.
-    base = (
+    api_base = (
         "https://sandbox.cashfree.com/pg"
         if mode == "sandbox"
         else "https://api.cashfree.com/pg"
     )
-    return base, app_id, secret
+
+    return api_base, app_id, secret
 
 
 def cashfree_headers(app_id, secret):
@@ -69,6 +76,7 @@ def get_books():
         WHERE is_active = TRUE
         ORDER BY id
     """
+
     with psycopg.connect(get_database_url(), connect_timeout=10) as conn:
         with conn.cursor() as cur:
             cur.execute(query)
@@ -109,10 +117,15 @@ def db_test():
             with conn.cursor() as cur:
                 cur.execute("SELECT current_database()")
                 database = cur.fetchone()[0]
+
         return {"status": "connected", "database": database}
+
     except Exception:
         app.logger.exception("Database test failed")
-        return jsonify(status="error", message="Database connection failed"), 500
+        return jsonify(
+            status="error",
+            message="Database connection failed",
+        ), 500
 
 
 @app.route("/api/create-order", methods=["POST"])
@@ -124,11 +137,15 @@ def create_order():
     except (TypeError, ValueError):
         return jsonify(error="Invalid book selection"), 400
 
+    if book_id <= 0:
+        return jsonify(error="Invalid book selection"), 400
+
     name = str(data.get("name", "")).strip()
     email = str(data.get("email", "")).strip().lower()
 
     if not name or len(name) > 100:
         return jsonify(error="Please enter your name"), 400
+
     if len(email) > 254 or not re.fullmatch(
         r"[^@\s]+@[^@\s]+\.[^@\s]+", email
     ):
@@ -137,7 +154,7 @@ def create_order():
     try:
         api_base, app_id, secret = cashfree_config()
 
-        # Read the product price from the database, never from the browser.
+        # Read product price from the database, never from the browser.
         with psycopg.connect(get_database_url(), connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -156,31 +173,44 @@ def create_order():
                 title, price_paise = book
                 amount = Decimal(price_paise) / Decimal(100)
 
+                # FIX: Reuse the customer if their email already exists.
+                # The email column has a unique constraint in the database.
                 cur.execute(
                     """
                     INSERT INTO customers (name, email)
                     VALUES (%s, %s)
+                    ON CONFLICT (email)
+                    DO UPDATE SET name = EXCLUDED.name
                     RETURNING id
                     """,
                     (name, email),
                 )
                 customer_id = cur.fetchone()[0]
 
-                # Cashfree order IDs must be unique.
                 provider_order_id = "np_" + secrets.token_hex(12)
 
                 cur.execute(
                     """
                     INSERT INTO orders (
-                        customer_id, book_id, amount_paise, currency,
-                        payment_status, payment_provider, provider_order_id
+                        customer_id,
+                        book_id,
+                        amount_paise,
+                        currency,
+                        payment_status,
+                        payment_provider,
+                        provider_order_id
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
-                        customer_id, book_id, price_paise, "INR",
-                        "pending", "cashfree", provider_order_id,
+                        customer_id,
+                        book_id,
+                        price_paise,
+                        "INR",
+                        "pending",
+                        "cashfree",
+                        provider_order_id,
                     ),
                 )
                 local_order_id = cur.fetchone()[0]
@@ -197,7 +227,6 @@ def create_order():
                 "customer_id": f"customer_{customer_id}",
                 "customer_name": name,
                 "customer_email": email,
-                # Cashfree may require a phone number for some payment flows.
                 "customer_phone": "9999999999",
             },
             "order_meta": {
@@ -230,18 +259,30 @@ def create_order():
         session_id = result.get("payment_session_id")
 
         if not session_id:
-            app.logger.error("Cashfree response had no payment session ID")
-            return jsonify(error="Payment session could not be created"), 502
+            app.logger.error(
+                "Cashfree response had no payment session ID"
+            )
+            return jsonify(
+                error="Payment session could not be created"
+            ), 502
 
         return jsonify(
             order_id=provider_order_id,
             payment_session_id=session_id,
-            mode=os.getenv("CASHFREE_ENV", "sandbox").lower(),
+            mode=os.getenv("CASHFREE_ENV", "sandbox").strip().lower(),
         )
+
+    except requests.RequestException:
+        app.logger.exception("Cashfree order request failed")
+        return jsonify(
+            error="Payment service is temporarily unavailable. Please try again."
+        ), 502
 
     except Exception:
         app.logger.exception("Could not create payment order")
-        return jsonify(error="Unable to start checkout. Please try again."), 500
+        return jsonify(
+            error="Unable to start checkout. Please try again."
+        ), 500
 
 
 def verify_cashfree_order(provider_order_id):
@@ -255,8 +296,9 @@ def verify_cashfree_order(provider_order_id):
 
     if not response.ok:
         app.logger.error(
-            "Cashfree verification failed: HTTP %s",
+            "Cashfree verification failed: HTTP %s; %s",
             response.status_code,
+            response.text[:1000],
         )
         return None
 
@@ -265,32 +307,18 @@ def verify_cashfree_order(provider_order_id):
 
 def create_download_token(order_id):
     raw_token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    token_hash = hashlib.sha256(
+        raw_token.encode("utf-8")
+    ).hexdigest()
     expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
     with psycopg.connect(get_database_url(), connect_timeout=10) as conn:
         with conn.cursor() as cur:
-            # Reuse a still-valid token if one already exists.
             cur.execute(
                 """
-                SELECT token_hash
-                FROM download_tokens
-                WHERE order_id = %s AND expires_at > NOW()
-                ORDER BY id DESC
-                LIMIT 1
-                """,
-                (order_id,),
-            )
-            existing = cur.fetchone()
-
-            if existing:
-                # The raw token cannot be reconstructed from its hash.
-                # A new token is created below instead.
-                pass
-
-            cur.execute(
-                """
-                INSERT INTO download_tokens (order_id, token_hash, expires_at)
+                INSERT INTO download_tokens (
+                    order_id, token_hash, expires_at
+                )
                 SELECT o.id, %s, %s
                 FROM orders o
                 JOIN books b ON b.id = o.book_id
@@ -305,7 +333,9 @@ def create_download_token(order_id):
             )
 
             if cur.fetchone() is None:
-                raise ValueError("No eligible paid order or book file")
+                raise ValueError(
+                    "No eligible paid order or book file"
+                )
 
     return raw_token
 
@@ -318,7 +348,6 @@ def payment_return():
         return "Invalid payment order.", 400
 
     try:
-        # First ensure this provider order belongs to our database.
         with psycopg.connect(get_database_url(), connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -336,6 +365,7 @@ def payment_return():
             return "Order not found.", 404
 
         local_order_id, expected_paise, currency = local_order
+
         provider_order = verify_cashfree_order(provider_order_id)
 
         if not provider_order:
@@ -344,22 +374,33 @@ def payment_return():
                 "Please contact support before trying to pay again."
             ), 503
 
-        status = str(provider_order.get("order_status", "")).upper()
+        status = str(
+            provider_order.get("order_status", "")
+        ).upper()
+
         try:
-            actual_amount = Decimal(str(provider_order.get("order_amount")))
+            actual_amount = Decimal(
+                str(provider_order.get("order_amount"))
+            )
             expected_amount = Decimal(expected_paise) / Decimal(100)
         except Exception:
-            app.logger.error("Invalid amount in Cashfree order response")
+            app.logger.error(
+                "Invalid amount in Cashfree order response"
+            )
             return "Payment verification failed.", 502
 
-        actual_currency = str(provider_order.get("order_currency", "")).upper()
+        actual_currency = str(
+            provider_order.get("order_currency", "")
+        ).upper()
 
         if (
             status == "PAID"
             and actual_amount == expected_amount
             and actual_currency == str(currency).strip().upper()
         ):
-            with psycopg.connect(get_database_url(), connect_timeout=10) as conn:
+            with psycopg.connect(
+                get_database_url(), connect_timeout=10
+            ) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
@@ -368,7 +409,6 @@ def payment_return():
                             paid_at = COALESCE(paid_at, NOW())
                         WHERE id = %s
                           AND provider_order_id = %s
-                          AND LOWER(payment_status) <> 'paid'
                         """,
                         (local_order_id, provider_order_id),
                     )
@@ -390,6 +430,7 @@ def payment_return():
     except requests.RequestException:
         app.logger.exception("Cashfree verification request failed")
         return "Payment verification is temporarily unavailable.", 503
+
     except Exception:
         app.logger.exception("Payment return handling failed")
         return "Could not confirm payment. Please contact support.", 500
@@ -397,7 +438,6 @@ def payment_return():
 
 @app.route("/payment/success/<token>")
 def download_page(token):
-    # Keep the token out of the public store page.
     if not token or len(token) > 100:
         abort(404)
 
@@ -409,7 +449,9 @@ def download_book(token):
     if not token or len(token) > 100:
         abort(404)
 
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    token_hash = hashlib.sha256(
+        token.encode("utf-8")
+    ).hexdigest()
 
     query = """
         SELECT b.title, b.file_path
@@ -428,6 +470,7 @@ def download_book(token):
             with conn.cursor() as cur:
                 cur.execute(query, (token_hash,))
                 row = cur.fetchone()
+
     except Exception:
         app.logger.exception("Download database check failed")
         return "Download temporarily unavailable.", 503
@@ -445,7 +488,9 @@ def download_book(token):
         abort(404)
 
     if not requested_path.is_file():
-        app.logger.error("Book PDF file not found for book: %s", title)
+        app.logger.error(
+            "Book PDF file not found for book: %s", title
+        )
         return "The eBook file is not currently available.", 503
 
     return send_file(
@@ -458,4 +503,4 @@ def download_book(token):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False)
