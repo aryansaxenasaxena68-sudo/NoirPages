@@ -42,16 +42,29 @@ def get_database_url():
 
 
 def cashfree_config():
-    mode = os.getenv("CASHFREE_ENV", "sandbox").strip().lower()
+    mode = (os.getenv("CASHFREE_ENV") or "sandbox").strip().lower()
 
     if mode not in ("sandbox", "production"):
         raise RuntimeError("CASHFREE_ENV must be sandbox or production")
 
-    app_id = os.getenv("CASHFREE_APP_ID")
-    secret = os.getenv("CASHFREE_SECRET_KEY")
+    app_id = (os.getenv("CASHFREE_APP_ID") or "").strip()
+    secret = (os.getenv("CASHFREE_SECRET_KEY") or "").strip()
 
     if not app_id or not secret:
         raise RuntimeError("Cashfree credentials are not configured")
+
+    # Reject malformed credentials instead of sending invalid HTTP headers.
+    if any(char in app_id + secret for char in "\\r\\n"):
+        raise RuntimeError("Invalid newline in Cashfree credentials")
+
+    if "," in app_id:
+        raise RuntimeError(
+            "CASHFREE_APP_ID must contain only the App ID, not multiple values"
+        )
+    if "," in secret:
+        raise RuntimeError(
+            "CASHFREE_SECRET_KEY must contain only the Secret Key, not multiple values"
+        )
 
     api_base = (
         "https://sandbox.cashfree.com/pg"
@@ -64,8 +77,8 @@ def cashfree_config():
 
 def cashfree_headers(app_id, secret):
     return {
-        "x-client-id": app_id,
-        "x-client-secret": secret,
+        "x-client-id": app_id.strip(),
+        "x-client-secret": secret.strip(),
         "x-api-version": CASHFREE_API_VERSION,
         "Content-Type": "application/json",
         "Accept": "application/json",
