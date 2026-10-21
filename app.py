@@ -53,17 +53,24 @@ def cashfree_config():
     if not app_id or not secret:
         raise RuntimeError("Cashfree credentials are not configured")
 
-    # Reject malformed credentials instead of sending invalid HTTP headers.
-    if any(char in app_id + secret for char in "\\r\\n"):
-        raise RuntimeError("Invalid newline in Cashfree credentials")
+    
+    # Check credentials without exposing their values in logs.
+    if "\r" in app_id or "\n" in app_id:
+        app.logger.error("CASHFREE_APP_ID contains a newline")
+        raise RuntimeError("Invalid newline in CASHFREE_APP_ID")
+
+    if "\r" in secret or "\n" in secret:
+        app.logger.error("CASHFREE_SECRET_KEY contains a newline")
+        raise RuntimeError("Invalid newline in CASHFREE_SECRET_KEY")
 
     if "," in app_id:
         raise RuntimeError(
-            "CASHFREE_APP_ID must contain only the App ID, not multiple values"
+            "CASHFREE_APP_ID must contain only the App ID"
         )
+
     if "," in secret:
         raise RuntimeError(
-            "CASHFREE_SECRET_KEY must contain only the Secret Key, not multiple values"
+            "CASHFREE_SECRET_KEY must contain only the Secret Key"
         )
 
     api_base = (
